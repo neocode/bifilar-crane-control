@@ -1,0 +1,6 @@
+S1 PID (optimal)  RK4 h=0.50 ms vs DOP853: max|dx_T|=4.20e-07 m, max|dphi|=4.00e-06 deg, max|dtheta|=0.00e+00 deg
+S1 PID (optimal)  RK4 h=0.25 ms vs DOP853: max|dx_T|=2.42e-08 m, max|dphi|=2.30e-07 deg, max|dtheta|=0.00e+00 deg
+S2 LQR            RK4 h=0.50 ms vs DOP853: max|dx_T|=1.85e-06 m, max|dphi|=1.75e-05 deg, max|dtheta|=0.00e+00 deg
+S2 LQR            RK4 h=0.25 ms vs DOP853: max|dx_T|=1.08e-07 m, max|dphi|=1.02e-06 deg, max|dtheta|=0.00e+00 deg
+S4 MPC            RK4 h=0.50 ms vs DOP853: max|dx_T|=5.23e-07 m, max|dphi|=4.99e-06 deg, max|dtheta|=1.33e-08 deg
+S4 MPC            RK4 h=0.25 ms vs DOP853: max|dx_T|=3.02e-08 m, max|dphi|=2.89e-07 deg, max|dtheta|=7.72e-10 deg

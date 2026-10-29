@@ -1,0 +1,2 @@
+IPM vs BVLS (40 random box QPs, n=30): max |dx| = 6.22e-15
+IPM vs SLSQP (40 random general QPs, n=30, 80 constraints): max |dx| = 1.53e-06

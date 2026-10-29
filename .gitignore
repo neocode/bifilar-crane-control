@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*.nbi
+*.nbc
+*_log.txt
+.venv/
+.~lock*
+*.swp
+.DS_Store
