@@ -1,0 +1,82 @@
+{
+ "S2/PD": {
+  "rope_max_deg": 14.86381436597825,
+  "phi_max_deg": 14.863814365978271,
+  "rope_minus_phi_max_deg": 2.16439416302755e-09
+ },
+ "S2/PID (soft)": {
+  "rope_max_deg": 3.9313476321690364,
+  "phi_max_deg": 3.93134763216894,
+  "rope_minus_phi_max_deg": 2.04638723430876e-09
+ },
+ "S2/PID (medium)": {
+  "rope_max_deg": 8.029014229159857,
+  "phi_max_deg": 8.02901422915983,
+  "rope_minus_phi_max_deg": 1.565744808113001e-10
+ },
+ "S2/PID (optimal)": {
+  "rope_max_deg": 12.157970814956972,
+  "phi_max_deg": 12.157970814956983,
+  "rope_minus_phi_max_deg": 2.606316454282641e-09
+ },
+ "S2/PID (hard)": {
+  "rope_max_deg": 21.21857728147457,
+  "phi_max_deg": 21.21857728147456,
+  "rope_minus_phi_max_deg": 4.7295575691067093e-07
+ },
+ "S2/LQR": {
+  "rope_max_deg": 5.158442598993153,
+  "phi_max_deg": 5.158442598993124,
+  "rope_minus_phi_max_deg": 2.5965019726362333e-07
+ },
+ "S2/MPC": {
+  "rope_max_deg": 13.91493951907473,
+  "phi_max_deg": 13.914939519074727,
+  "rope_minus_phi_max_deg": 1.482122175007236e-07
+ },
+ "S2/MPC-SC": {
+  "rope_max_deg": 1.9982091817659333,
+  "phi_max_deg": 1.99820918176589,
+  "rope_minus_phi_max_deg": 4.5692029509409356e-07
+ },
+ "S4/PD": {
+  "rope_max_deg": 3.7443795719747826,
+  "phi_max_deg": 1.4336566980718188,
+  "rope_minus_phi_max_deg": 3.7443795719747826
+ },
+ "S4/PID (soft)": {
+  "rope_max_deg": 3.7443795719747826,
+  "phi_max_deg": 0.42689383838337447,
+  "rope_minus_phi_max_deg": 3.7443795719747826
+ },
+ "S4/PID (medium)": {
+  "rope_max_deg": 3.7443795719747826,
+  "phi_max_deg": 0.9196098211124282,
+  "rope_minus_phi_max_deg": 3.7443795719747826
+ },
+ "S4/PID (optimal)": {
+  "rope_max_deg": 3.7443795719747826,
+  "phi_max_deg": 1.4291972986282566,
+  "rope_minus_phi_max_deg": 3.7443795719747826
+ },
+ "S4/PID (hard)": {
+  "rope_max_deg": 4.177928295455587,
+  "phi_max_deg": 2.9619734225488763,
+  "rope_minus_phi_max_deg": 3.7443795719747826
+ },
+ "S4/LQR": {
+  "rope_max_deg": 3.7443795719747826,
+  "phi_max_deg": 0.5011987753434811,
+  "rope_minus_phi_max_deg": 3.7443795719747826
+ },
+ "S4/MPC": {
+  "rope_max_deg": 3.7443795719747826,
+  "phi_max_deg": 1.390660610415151,
+  "rope_minus_phi_max_deg": 3.7443795719747826
+ },
+ "S4/MPC-SC": {
+  "rope_max_deg": 3.7443795719747826,
+  "phi_max_deg": 1.3541440575083072,
+  "rope_minus_phi_max_deg": 3.7443795719747826
+ }
+}

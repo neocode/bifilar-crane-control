@@ -37,39 +37,39 @@
  },
  "PID (optimal)/l=5.5/phi0=-1.5": {
   "Ts": 11.1,
-  "overshoot": 19.32898705633766
+  "overshoot": 19.329048032905785
  },
  "PID (optimal)/l=5.5/phi0=0.0": {
   "Ts": 11.74,
-  "overshoot": 10.434698828719155
+  "overshoot": 10.434688313919773
  },
  "PID (optimal)/l=5.5/phi0=1.5": {
   "Ts": 12.0,
-  "overshoot": 5.592939951685205
+  "overshoot": 5.5928659278189725
  },
  "PID (optimal)/l=6.0/phi0=-1.5": {
   "Ts": 9.58,
-  "overshoot": 14.415317458083102
+  "overshoot": 14.415380268312813
  },
  "PID (optimal)/l=6.0/phi0=0.0": {
   "Ts": 3.7600000000000002,
-  "overshoot": 2.3269416562097742
+  "overshoot": 2.3269605395803215
  },
  "PID (optimal)/l=6.0/phi0=1.5": {
   "Ts": 7.22,
-  "overshoot": 2.121488779440121
+  "overshoot": 2.1214471382893505
  },
  "PID (optimal)/l=6.5/phi0=-1.5": {
   "Ts": 6.640000000000001,
-  "overshoot": 10.224297402880474
+  "overshoot": 10.224374271177675
  },
  "PID (optimal)/l=6.5/phi0=0.0": {
   "Ts": 8.56,
-  "overshoot": 1.043313741752761
+  "overshoot": 1.0433276307885462
  },
  "PID (optimal)/l=6.5/phi0=1.5": {
   "Ts": 7.8,
-  "overshoot": 3.5548230333424518
+  "overshoot": 3.5547441040009398
  },
  "LQR/l=5.5/phi0=-1.5": {
   "Ts": 7.0,

@@ -14,7 +14,7 @@ from numba import njit
 from scipy.optimize import differential_evolution, minimize
 
 from . import params as P
-from .linear import c2d, pid_closed_loop, z_to_s, damping_ratios
+from .linear import c2d, pid_closed_loop, z_to_s, damping_ratios, pid_structural_mode, remove_structural_mode
 
 
 D_TEST = -0.35   # kN, constant trolley-side disturbance of the tuning test (~ nominal Coulomb force)
@@ -75,19 +75,27 @@ BOUNDS = [(0.0, 200.0),      # KpT  kN/m
 
 
 class Tuner:
-    def __init__(self, spec, integral=True, x0=0.5, Ts=P.TS, T=P.T_END, Fmax=P.F_MAX):
+    def __init__(self, spec, integral=True, swing_integral=True, x0=0.5, Ts=P.TS, T=P.T_END,
+                 Fmax=P.F_MAX):
+        """integral=False: PD; swing_integral=False: integral action in the trolley channel only."""
         A, B, _, _ = P.linear_model()
         Ad, Bd = c2d(A, B, Ts)
         self.Ad, self.Bd = np.ascontiguousarray(Ad), np.ascontiguousarray(Bd)
         self.l, self.Ts, self.Fmax, self.x0 = P.L_ROPE, Ts, Fmax, x0
+        self.w_struct = pid_structural_mode(self.Ad, self.Bd, self.l, Ts)
         self.n = int(round(T / Ts))
         self.t = np.arange(self.n + 1) * Ts
-        self.spec, self.integral = spec, integral
+        self.spec, self.integral, self.swing_integral = spec, integral, swing_integral
+
+    def free(self):
+        """Indices of the free gains in (KpT, KiT, KdT, Kpa, Kia, Kda)."""
+        if not self.integral:
+            return [0, 2, 3, 5]
+        return [0, 1, 2, 3, 5] if not self.swing_integral else [0, 1, 2, 3, 4, 5]
 
     def full(self, p):
-        g = np.array(p, float)
-        if not self.integral:
-            g = np.array([g[0], 0.0, g[1], g[2], 0.0, g[3]])
+        g = np.zeros(6)
+        g[self.free()] = np.array(p, float)
         return g
 
     def evaluate(self, g):
@@ -98,6 +106,11 @@ class Tuner:
         Acl, _ = pid_closed_loop(self.Ad, self.Bd, g, self.l, self.Ts)
         keep = [0, 1, 2, 3] + ([4] if g[1] != 0.0 else []) + ([5] if g[4] != 0.0 else [])
         Acl = Acl[np.ix_(keep, keep)]
+        if g[4] != 0.0:
+            # the swing-angle integrator adds an uncontrollable eigenvalue z = 1 for any gains
+            # (Sect. 3.4.4); it is removed analytically, so that stability (rho < 1) and the
+            # damping specification refer to the remaining modes and do not depend on rounding
+            Acl = remove_structural_mode(Acl, self.w_struct[keep])
         ev = np.linalg.eigvals(Acl)
         rho = np.max(np.abs(ev))
         zeta = np.min(damping_ratios(z_to_s(ev, self.Ts)))
@@ -135,7 +148,9 @@ class Tuner:
         return r['ITAE'] + r['ITAE_d'] + 100.0 * v
 
     def run(self, seed=1, maxiter=1000, popsize=50, x0=None):
-        bounds = BOUNDS if self.integral else [BOUNDS[i] for i in (0, 2, 3, 5)]
+        bounds = [BOUNDS[i] for i in self.free()]
+        if x0 is not None and len(x0) == 6:
+            x0 = np.asarray(x0, float)[self.free()]
         de = differential_evolution(self.cost, bounds, seed=seed, maxiter=maxiter, popsize=popsize,
                                     tol=1e-12, mutation=(0.5, 1.0), recombination=0.7,
                                     polish=False, init='sobol', updating='deferred', workers=1,

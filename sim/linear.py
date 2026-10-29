@@ -47,6 +47,31 @@ def pid_closed_loop(Ad, Bd, gains, l, Ts):
     return Acl, Kaug
 
 
+def pid_structural_mode(Ad, Bd, l, Ts):
+    """Left eigenvector w of the PID closed loop (w' Acl = w') for the eigenvalue 1 that the
+    swing-angle integrator introduces for any gains. Its state ordering is that of
+    pid_closed_loop, [x(4), xi_T, xi_a]; w = [w_x, 0, 1] with w_x' Bd = 0 and
+    w_x' (Ad - I) + (Ts/l) e_3' = 0, the discrete counterpart of the invariant
+    g xi_a + dx_T/dt + dx_CoM/dt (Sect. 3.4.4). It does not depend on the gains."""
+    Mx = np.zeros((5, 5))
+    Mx[:4, :4] = (Ad - np.eye(4)).T
+    Mx[2, 4] = Ts / l
+    Mx[4, :4] = Bd[:, 0]
+    v = np.linalg.svd(Mx)[2][-1]
+    return np.array([v[0], v[1], v[2], v[3], 0.0, v[4]]) / v[4]
+
+
+def remove_structural_mode(Acl, w):
+    """Restriction of Acl to its invariant subspace ker(w'): all eigenvalues except the
+    structural eigenvalue 1 of the left eigenvector w."""
+    from scipy.linalg import null_space
+    res = np.max(np.abs(w @ Acl - w))
+    if res > 1e-9:
+        raise ValueError(f'w is not a left eigenvector for the eigenvalue 1 (residual {res:.1e})')
+    Q = null_space(w[None, :])
+    return Q.T @ Acl @ Q
+
+
 def damping_ratios(eig_s):
     """Damping ratios of continuous-equivalent poles (real poles give 1, unstable < 0)."""
     zs = []

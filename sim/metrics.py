@@ -3,6 +3,9 @@ import numpy as np
 
 PHI_BAND_DEG = 0.1      # residual-swing band used for the swing settling time, deg
 BAND_MIN = 0.025        # minimum trolley-position band, m
+PHI_LIMIT_DEG = 2.0     # MPC-SC swing limit (reported for every controller), deg
+V_LIMIT = 0.5           # MPC-SC trolley-speed limit, m/s
+LIMIT_TOL = 1e-4        # tolerance for counting a limit as exceeded (deg or m/s)
 
 
 def settling_time(t, y, band):
@@ -35,4 +38,11 @@ def compute(log, xT0):
     m['e_final_mm'] = abs(xT[-1]) * 1000.0
     m['u_rms_res'] = np.sqrt(np.mean(u[t >= t[-1] - 10.0] ** 2))  # residual activity 20-30 s
     m['band'] = band
+    # time spent above the MPC-SC limits (sampled at the controller period) and largest excess
+    dt = t[1] - t[0]
+    v = np.abs(log['vT'])
+    m['t_over_phi'] = float(np.sum(np.abs(phi) > PHI_LIMIT_DEG + LIMIT_TOL) * dt)
+    m['t_over_v'] = float(np.sum(v > V_LIMIT + LIMIT_TOL) * dt)
+    m['phi_excess'] = float(max(0.0, np.max(np.abs(phi)) - PHI_LIMIT_DEG))
+    m['v_excess'] = float(max(0.0, np.max(v) - V_LIMIT))
     return m

@@ -161,6 +161,13 @@ Violations of the following specifications are added to the objective as penalti
 | PID (hard) | saturation allowed | 20 % | 3.0° | 0.20 |
 | PD | 10 kN | 10 % | 1.5° | 0.40 |
 
+Stability (spectral radius below 1) and the damping specification are checked on the
+eigenvalues of the discrete closed loop. The swing-angle integrator adds an uncontrollable
+eigenvalue z = 1 for any gains (the discrete counterpart of the invariant g·ξ_α + ẋ_T + ẋ_CoM).
+Its computed value equals 1 only to rounding accuracy, so it is removed analytically before the
+check: the closed-loop matrix is restricted to the invariant subspace orthogonal to its
+gain-independent left eigenvector (`sim/linear.py: pid_structural_mode, remove_structural_mode`).
+
 The resulting gains are stored in `results/gains.json` together with the design metrics of
 each variant.
 
@@ -199,11 +206,12 @@ Defined in `sim/metrics.py` and computed in the same way for every controller.
 | `IAE`, `ITAE` | ∫\|x_T\| dt, ∫ t\|x_T\| dt |
 | `vT_peak` | peak trolley speed (m/s) |
 | `Trope` | peak rope tension (kN) |
+| `t_over_phi`, `t_over_v`, `phi_excess`, `v_excess` | time spent above the MPC-SC limits (\|φ\| > 2°, \|ẋ_T\| > 0.5 m/s) and largest excess, reported for every controller |
 | `qp_*`, `term_ok_frac` | QP solve times; fraction of samples at which the terminal state lies in O_inf (MPC only) |
 
 ## Numerical experiments
 
-The study consists of a tuning stage, fourteen closed-loop experiments (E1–E14) and three
+The study consists of a tuning stage (E1), seventeen further experiments (E2–E18) and three
 verification experiments for the numerical tools (V1–V3). All of them are run by the scripts in
 `scripts/`; no other code is needed.
 
@@ -219,17 +227,21 @@ verification experiments for the numerical tools (V1–V3). All of them are run 
 | E8 | reference-ramp baseline, S2r | PD, PID (optimal), PID (hard), LQR, MPC | 5 | `run_experiments.py ramp` | `metrics_ramp.json` |
 | E9 | validity range of the linear design model | PD, PID (optimal), LQR | 27 × 2 | `run_linearization.py` | `linearization.json` |
 | E10 | MPC prediction horizon, N = 50 vs 100 | MPC | 6 | `run_horizon_check.py` | `horizon_check.json` |
-| E11 | QP solve time and terminal-set membership | MPC, MPC-SC | 10 | `run_timing.py` | `qp_timing.json` |
+| E11 | QP time, complete control time and terminal-set membership | MPC, MPC-SC | 10 | `run_timing.py` | `qp_timing.json` |
 | E12 | rope tension (taut-rope assumption) | all 8 | 96 | `check_rope_tension.py` | `rope_tension_check.json` |
 | E13 | initial-offset sweep; Monte Carlo rank correlations | PD, PID (optimal), LQR, MPC | 16 | `run_offset_sweep.py` | `offset_sweep.json`, `mc_correlations.json` |
 | E14 | local sensitivity of the reference case | PD, PID (optimal), LQR, MPC | 36 | `run_pid_sensitivity.py` | `pid_sensitivity.json` |
+| E15 | 300 s continuation of the Monte Carlo runs with sustained force oscillations | flagged runs | 25 | `run_limit_cycles.py` | `limit_cycles.json` |
+| E16 | PID with integral action in the trolley channel only (tuned as in E1) | PID (trolley I) | 6 tunings + 212 | `run_trolley_integral.py` | `trolley_integral.json` |
+| E17 | role of the anti-windup bound of the swing integrator | PID (optimal) | 3 tests + 1 | `check_swing_integrator_bound.py` | `swing_integrator_bound.json` |
+| E18 | inclination of the individual ropes vs the swing angle φ (S2, S4) | all 8 | 16 | `check_rope_angles.py` | `rope_angles.json` |
 | V1 | plant verification | — | — | `check_plant.py` | `plant_verification.txt` |
-| V2 | QP solver verification | — | 80 QPs | `check_qp.py` | `qp_verification.txt` |
+| V2 | QP solver verification | — | 80 random + 4500 MPC-SC QPs | `check_qp.py` | `qp_verification.txt` |
 | V3 | integration accuracy | PID (optimal), LQR, MPC | 3 × 3 | `check_integration.py` | `integration_check.txt` |
 
 ### Common evaluation protocol
 
-Every closed-loop run (E2–E14, V3) follows the same procedure (`sim/simulate.py: run_nonlinear`):
+Every closed-loop run (E2–E18, V3) follows the same procedure (`sim/simulate.py: run_nonlinear`):
 
 1. **Initial state.** The plant starts at rest in a consistent configuration. The trolley is at
    x_T(0). The beam CoM is placed according to the scenario: initial swing φ(0), lateral offset
@@ -276,8 +288,8 @@ violations of four specifications:
 * minimum damping ratio of the closed-loop poles (by 0.05).
 
 In addition, a candidate whose regulation response does not settle within 30 s gets a penalty of
-one unit in v. Candidates with a closed-loop spectral radius ≥ 1, or with a diverging
-simulation, are rejected.
+one unit in v. Candidates whose remaining closed-loop eigenvalues (structural eigenvalue
+removed, see above) have a spectral radius ≥ 1, or whose simulation diverges, are rejected.
 
 *Search.*
 
@@ -290,7 +302,8 @@ simulation, are rejected.
 * Second pass: each PID variant is restarted from the best solution of every other variant and of
   PD. The stochastic search therefore cannot return a worse optimum than a nested special case.
 * The lowest-cost solution is kept. All costs found are stored in `gains.json` (`all_costs`),
-  together with the design metrics of the selected gains.
+  together with the design metrics of the selected gains. Runs that reached the best J to
+  within 0.01 %: PD 4 of 4, soft 6 of 9, medium 9 of 9, optimal 9 of 9, hard 9 of 9.
 
 ### E2. Nominal comparison (`run_experiments.py nominal`)
 
@@ -376,8 +389,10 @@ cost equals the exact infinite-horizon cost, so the 2 s horizon is long enough.
 ### E11. QP solve time and terminal set (`run_timing.py`)
 
 MPC and MPC-SC are run in S1-S5 in a single process, on an otherwise idle machine. The script
-records the wall-clock time of every QP solve (mean, 99th percentile and maximum) and the
-number of solver iterations. It also checks a posteriori, at every sample, whether the predicted
+records the wall-clock time of every QP solve (set-up of the constraint data and solution; mean,
+99th percentile and maximum), of every complete controller call (right-hand side of the QP, QP,
+terminal-set check), the number of steps that exceed the sampling period, and the number of
+solver iterations. It also checks a posteriori, at every sample, whether the predicted
 terminal state lies in O_inf, and records the time from which this holds. The `qp_*` values in `metrics_*.json` come
 from parallel batch runs and are not representative.
 
@@ -406,6 +421,37 @@ l ∈ {5.5, 6.0, 6.5} m and initial swing φ(0) ∈ {−1.5°, 0°, +1.5°}. The
 settling time and the overshoot. It tests whether the nominal advantage of PID (optimal) in S1
 persists under small model errors, or whether it is a sharp optimum.
 
+### E15. Long-horizon check of the sustained force oscillations (`run_limit_cycles.py`)
+
+The Monte Carlo runs flagged by an RMS force above 1 kN over the last 10 s are repeated over
+300 s with the same plant, controller and initial condition. The script records the RMS force in
+the windows 20–30, 90–100, 190–200 and 290–300 s, the oscillation period (zero crossings of the
+force over the last 50 s), the fraction of time at the force limit and the amplitudes of x_T and
+φ. An oscillation is called a limit cycle if its RMS force over 290–300 s differs from that over
+20–30 s by less than 10 %.
+
+### E16. PID with integral action in the trolley channel only (`run_trolley_integral.py`)
+
+A PID with K_iα = 0 is tuned with the procedure of E1 and the specifications of PID (optimal)
+(4 random seeds and 2 starts from related designs) and run in S1-S5, R1-R7 and the Monte Carlo
+set. It tests whether trolley-channel integral action combined with load-velocity feedback
+through the derivative gains can replace the two-channel PID.
+
+### E17. Role of the anti-windup bound of the swing integrator (`check_swing_integrator_bound.py`)
+
+Without saturation, the swing integrator equals an absolute load-velocity feedback with gain
+−K_iα/g. The regulation test of E1 is repeated for PID (optimal) with and without the bound
+|K_iα·ξ_α| ≤ F_max, and for its linear equivalent with integral action in the trolley channel
+only. The number of samples at which the bound is active is also counted in S1 on the nonlinear
+plant.
+
+### E18. Inclination of the individual ropes (`check_rope_angles.py`)
+
+S2 and S4 are repeated for all controllers. The script records the inclination of each rope
+(AE, BD) to the vertical and the longitudinal swing angle φ used in the metrics and in the MPC-SC
+constraint (angle of the trolley-CoM line in the vertical longitudinal plane). In planar motion
+(S2) the three angles coincide; in S4 the lateral and torsional motion tilts the ropes.
+
 ### V1–V3. Verification of the numerical tools
 
 * **V1, plant (`check_plant.py`).**
@@ -415,10 +461,17 @@ persists under small model errors, or whether it is a sharp optimum.
   * A 30 s free 3-D motion is simulated, starting from x_CoM = 0.8 m, y_CoM = 0.5 m and
     θ = 10°. It checks energy conservation and the drift of the rope constraints.
   * The static rope tensions are compared with m2·g/2.
-* **V2, QP solver (`check_qp.py`).** 40 random strictly convex QPs are generated (n = 30,
-  seed 0). In the box-constrained form they are solved by the interior-point solver and by SciPy
-  BVLS. With 20 additional random general inequalities (80 constraints in total) they are solved
-  by the interior-point solver and by SLSQP.
+* **V2, QP solver (`check_qp.py`).**
+  * 40 random strictly convex QPs are generated (n = 30, seed 0). In the box-constrained form
+    they are solved by the interior-point solver and by SciPy BVLS. With 20 additional random
+    general inequalities (80 constraints in total) they are solved by the interior-point solver
+    and by SLSQP (ftol 10⁻¹⁰, the tightest tolerance at which SLSQP reports success on all
+    problems). Every solver must report success.
+  * The interior-point solutions are certified by their KKT residuals: primal feasibility and
+    stationarity with non-negative multipliers on the active set (computed by NNLS).
+  * The same KKT check is applied to all QPs of MPC-SC solved in S1-S3 (102 variables, 602
+    inequality constraints), and the number of first-attempt convergences and restarts is
+    recorded.
 * **V3, integration (`check_integration.py`).** Three runs (S1 with PID (optimal), S2 with LQR,
   S4 with MPC) are repeated three times: with RK4 at h = 0.5 ms, with RK4 at h = 0.25 ms, and
   with DOP853 (rtol 10⁻¹¹, atol 10⁻¹²) over every sampling interval with the same ZOH input.
@@ -455,6 +508,10 @@ python scripts/run_timing.py           # QP solve times (run on an idle machine)
 python scripts/check_rope_tension.py   # minimum / maximum rope tension            -> results/rope_tension_check.json
 python scripts/run_offset_sweep.py     # PID integrator saturation, MC correlations -> results/offset_sweep.json, results/mc_correlations.json
 python scripts/run_pid_sensitivity.py  # sensitivity of PID (optimal) to l and φ(0) -> results/pid_sensitivity.json
+python scripts/run_trolley_integral.py # PID with trolley-channel integral only    -> results/trolley_integral.json
+python scripts/check_swing_integrator_bound.py  # role of the swing-integrator bound -> results/swing_integrator_bound.json
+python scripts/check_rope_angles.py    # rope inclinations vs swing angle (S2, S4) -> results/rope_angles.json
+python scripts/run_limit_cycles.py     # 300 s continuation of flagged MC runs     -> results/limit_cycles.json
 
 # 5. figures
 python scripts/make_fig2.py            # Fig. 2: block diagram of the evaluation protocol
@@ -503,6 +560,10 @@ The first call of each process includes the Numba JIT compilation of the plant.
 | `results/rope_tension_check.json` | rope tensions for all runs | `check_rope_tension.py` |
 | `results/offset_sweep.json`, `results/mc_correlations.json` | PID integrator saturation vs initial offset; correlation of MC settling times with the sampled parameters | `run_offset_sweep.py` |
 | `results/pid_sensitivity.json` | PID (optimal) vs rope length and initial swing | `run_pid_sensitivity.py` |
+| `results/trolley_integral.json` | gains, design metrics and S1-S5, R1-R7, Monte Carlo metrics of the PID with trolley-channel integral only | `run_trolley_integral.py` |
+| `results/swing_integrator_bound.json` | regulation test of PID (optimal) with and without the swing-integrator bound; samples at the bound in S1 | `check_swing_integrator_bound.py` |
+| `results/rope_angles.json` | maximum rope inclination and swing angle, S2 and S4 | `check_rope_angles.py` |
+| `results/limit_cycles.json` | 300 s continuation of the flagged Monte Carlo runs | `run_limit_cycles.py` |
 | `figures/Fig1_scheme.png` | scheme of the system | drawing (not generated by the code) |
 | `figures/Fig2_block_diagram.png` | evaluation protocol | `make_fig2.py` |
 | `figures/Fig3_classical_S1.png` | PD/PID/LQR responses, S1 | `make_figures.py` |
@@ -521,9 +582,10 @@ The first call of each process includes the Numba JIT compilation of the plant.
 | Static rope tensions | 19 620 N each (= m2 g/2) |
 | RK4 (h = 0.5 ms) vs DOP853, S1/S2/S4 | max \|Δx_T\| ≤ 1.9·10⁻⁶ m, max \|Δφ\| ≤ 1.8·10⁻⁵ deg |
 | Interior-point QP vs BVLS (40 box QPs, n = 30) | max \|Δx\| = 6·10⁻¹⁵ |
-| Interior-point QP vs SLSQP (40 general QPs, 80 constraints) | max \|Δx\| = 1.5·10⁻⁶ |
+| Interior-point QP vs SLSQP (40 general QPs, 80 constraints; all solvers successful) | max \|Δx\| = 1.4·10⁻⁶ (SLSQP tolerance); interior-point KKT residuals < 7·10⁻¹⁵ |
+| All MPC-SC QPs of S1-S3 (4500 problems, 102 variables, 602 constraints) | all converged at the first attempt; KKT residuals < 3·10⁻¹⁵; the input-constrained fallback was never needed in any run |
 | MPC horizon N = 50 vs N = 100 (S1-S3) | max \|Δu\| = 2·10⁻¹¹ kN; terminal state in O_inf at 100 % of samples |
-| QP solve time (idle machine) | MPC: mean 0.99 ms, p99 1.04 ms; MPC-SC: mean 5.9 ms, p99 12.3 ms (T_s = 20 ms) |
+| QP time per step (idle machine) | MPC: mean 0.98 ms, p99 1.19 ms; MPC-SC: mean 5.9 ms, p99 11.8 ms (T_s = 20 ms); complete control computation 1.01 and 5.9 ms on average; 10 MPC steps, all in the first 0.22 s of S2, exceed 20 ms |
 | Minimum rope tension over all runs | 4.75 kN (S2, PID (hard)); the ropes never go slack |
 
 ## Main results
@@ -533,13 +595,13 @@ Reference case S1 (x_T(0) = 0.5 m), nonlinear plant, from `results/metrics_nomin
 | Controller | Ts (5 %), s | Ts (2 %), s | Overshoot, % | φ peak, deg | F peak, kN | Work, kJ |
 |---|---|---|---|---|---|---|
 | PD | 4.14 | 7.80 | 0.0 | 1.43 | 10.00 | 0.24 |
-| PID (soft) | 24.54 | 26.44 | 21.2 | 0.43 | 2.50 | 0.26 |
+| PID (soft) | 24.56 | 26.44 | 21.2 | 0.43 | 2.50 | 0.26 |
 | PID (medium) | 13.84 | > 30 | 6.4 | 0.92 | 5.00 | 0.21 |
 | PID (optimal) | 3.76 | 11.00 | 2.3 | 1.43 | 10.00 | 0.26 |
 | PID (hard) | 3.04 | 3.24 | 0.9 | 2.96 | 10.00 | 1.57 |
 | LQR | 6.66 | 10.68 | 2.2 | 0.50 | 10.00 | 0.21 |
 | MPC | 6.62 | 7.78 | 6.6 | 1.39 | 10.00 | 0.48 |
-| MPC-SC | 6.68 | 7.86 | 6.6 | 1.35 | 9.15 | 0.23 |
+| MPC-SC | 6.68 | 7.86 | 6.6 | 1.35 | 9.15 | 0.22 |
 
 Main findings:
 
@@ -553,15 +615,24 @@ Main findings:
 * **Swing limits in a large move.** In S2 only MPC-SC keeps |α| ≤ 2° and |ẋ_T| ≤ 0.5 m/s
   (φ peak 2.00°, work 4.5 kJ). The unconstrained controllers reach 3.9–21°. A reference ramp
   (S2r) gives the classical controllers a similar behaviour, but the limits are then not
-  enforced.
+  enforced. Under model mismatch (Monte Carlo) MPC-SC does not enforce its limits: of the 137
+  samples with an admissible initial swing, the speed limit was exceeded in 129 (mainly because
+  of the unmodelled drive lag) and the swing limit in 69 (mainly because the constraint uses the
+  nominal rope length).
 * **Robustness of the PID.** The nominal advantage of the PID (optimal) is not robust. In
   the Monte Carlo study its median 5 % settling time is 11.2 s, against 6.7 s for LQR and
   6.9 s for MPC. The cause is that the two integrators saturate in opposition at the
-  anti-windup bounds (`offset_sweep.json`). High-gain designs develop limit cycles when the
-  drive lag is combined with low friction.
+  anti-windup bounds (`offset_sweep.json`). Its nominal response relies on the active
+  anti-windup bound of the swing integrator: without it, the overshoot in the tuning test rises
+  from 2.1 % to 39 % (`swing_integrator_bound.json`). A PID with integral action in the trolley
+  channel only, tuned to the same specifications, reduces to PD (`trolley_integral.json`).
+* **Limit cycles.** High-gain designs (PID (hard), LQR, MPC, MPC-SC in 14, 5, 3 and 2 of the
+  200 Monte Carlo samples) develop limit cycles when a drive lag of at least 0.06 s is combined
+  with low friction. Continued to 300 s, they keep their RMS force (7.3–8.8 kN) to within 1 %
+  (period 0.18–0.42 s); one further flagged run decayed (`limit_cycles.json`).
 * **Structure of the two-loop PID.** The PID loop has a structurally uncontrollable pole at
-  z = 1: the combination g·ξ_α + ẋ_T + ẋ_CoM is invariant. The closed-loop matrix from
-  `sim/linear.py: pid_closed_loop` has an eigenvalue equal to 1 to machine precision.
+  z = 1: the combination g·ξ_α + ẋ_T + ẋ_CoM is invariant. Its exact discrete left eigenvector
+  is computed in `sim/linear.py: pid_structural_mode`.
 
 ## Notes and limitations
 
@@ -573,4 +644,9 @@ Main findings:
   measured during parallel batch runs; the representative values are those in
   `results/qp_timing.json` (idle machine).
 * Run logs (`*_log.txt`), `__pycache__` and Numba caches are not tracked (see `.gitignore`).
+* Change of the tuning check (2026-10-29): the first version tested the spectral radius of the
+  PID closed loop including the structural eigenvalue z = 1. Because that eigenvalue equals 1
+  only to rounding accuracy, about half of all candidates were rejected at random, depending on
+  the floating-point environment. With the corrected test the tuning reproduced the earlier
+  optima (costs within 3·10⁻⁵, gains within 2·10⁻⁴, relative); all results were regenerated.
 * No licence has been chosen yet. Until one is added, all rights are reserved by the authors.

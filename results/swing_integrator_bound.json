@@ -1,0 +1,27 @@
+{
+ "velocity_gain": 58.11736170558369,
+ "equivalent_gains": {
+  "KpT": 19.999999999985928,
+  "KiT": 5.954397656327557,
+  "KdT": 32.47069712481647,
+  "Kpa": 109.3089743129564,
+  "Kia": 0.0,
+  "Kda": -78.40614145440077
+ },
+ "with_bound": {
+  "overshoot": 2.1359862417747273,
+  "clipped_steps": 32,
+  "max_Kia_xia": 10.0
+ },
+ "without_bound": {
+  "overshoot": 38.96720824400392,
+  "clipped_steps": 0,
+  "max_Kia_xia": 17.52168200367217
+ },
+ "equivalent": {
+  "overshoot": 38.487465059369875,
+  "clipped_steps": 0,
+  "max_Kia_xia": 0.0
+ },
+ "S1_samples_at_bound": 33
+}
