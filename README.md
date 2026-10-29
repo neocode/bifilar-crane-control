@@ -232,7 +232,7 @@ verification experiments for the numerical tools (V1–V3). All of them are run 
 | E12 | rope tension (taut-rope assumption) | all 8 | 96 | `check_rope_tension.py` | `rope_tension_check.json` |
 | E13 | initial-offset sweep; Monte Carlo rank correlations | PD, PID (optimal), LQR, MPC | 16 | `run_offset_sweep.py` | `offset_sweep.json`, `mc_correlations.json` |
 | E14 | local sensitivity of the reference case | PD, PID (optimal), LQR, MPC | 36 | `run_pid_sensitivity.py` | `pid_sensitivity.json` |
-| E15 | 300 s continuation of runs with possible sustained oscillations (force or swing) | flagged runs | ≈ 125 | `run_limit_cycles.py` | `limit_cycles.json` |
+| E15 | 300 s continuation of runs with possible sustained oscillations (force or swing) | flagged runs | 124 | `run_limit_cycles.py` | `limit_cycles.json` |
 | E16 | PID with integral action in the trolley channel only (tuned as in E1) | PID (trolley I) | 6 tunings + 212 | `run_trolley_integral.py` | `trolley_integral.json` |
 | E17 | role of the anti-windup bound of the swing integrator | PID (optimal) | 3 tests + 1 | `check_swing_integrator_bound.py` | `swing_integrator_bound.json` |
 | E18 | inclination of the individual ropes vs the swing angle φ (S2, S4) | all 8 | 16 | `check_rope_angles.py` | `rope_angles.json` |
@@ -419,7 +419,8 @@ inextensible-rope model to be valid. The maximum gives the peak rope load.
 x_T(0) ∈ {0.5, 1.0, 1.5, 2.0} m (16 runs). The script records the settling time, the final
 position error and the peak swing. For the PID it also records the final integral contributions
 K_iT·ξ_T and K_iα·ξ_α. These show whether the two integrators end at their anti-windup bounds
-±F_max with opposite signs, which explains the loss of performance of PID (optimal) in E4.
+±F_max with opposite signs, which explains the loss of performance of PID (optimal) for large
+initial offsets (one of the causes of its slower Monte Carlo response in E4; see also E14).
 
 *Correlations.* The script computes Spearman rank correlations between the Monte Carlo settling
 time of each controller and each sampled quantity, and also |l − 6 m|. Runs that do not settle
@@ -641,7 +642,7 @@ The first call of each process includes the Numba JIT compilation of the plant.
 | Free 3-D motion for 30 s, energy drift | 8·10⁻⁸ J (relative 3·10⁻¹³) |
 | Rope constraint residual | 6·10⁻¹³ m |
 | Static rope tensions | 19 620 N each (= m2 g/2) |
-| RK4 (h = 0.5 ms) vs DOP853, S1/S2/S4 | max \|Δx_T\| ≤ 1.9·10⁻⁶ m, max \|Δφ\| ≤ 1.8·10⁻⁵ deg |
+| RK4 (h = 0.5 ms) vs DOP853, S1, S2, S4, R7 | max \|Δx_T\| ≤ 1.9·10⁻⁶ m, max \|Δφ\| ≤ 1.8·10⁻⁵ deg |
 | Interior-point QP vs BVLS (40 box QPs, n = 30) | max \|Δx\| = 6·10⁻¹⁵ |
 | Interior-point QP vs SLSQP (40 general QPs, 80 constraints; all solvers successful) | max \|Δx\| = 1.4·10⁻⁶ (SLSQP tolerance); interior-point KKT residuals < 3·10⁻¹⁴ (strict test) |
 | All MPC-SC QPs of S1-S3 (4500 problems, 102 variables, 602 constraints) | all converged at the first attempt; strict KKT residuals: stationarity < 2·10⁻¹¹, feasibility and complementarity < 3·10⁻¹⁴, up to 102 active constraints; plans perturbed by 0.1 % fail the test; the input-constrained fallback was never needed in any run |
@@ -668,7 +669,7 @@ Main findings:
 
 * **MPC and LQR.** With a Riccati terminal cost and only the input constraint active, the MPC
   coincides with the saturated augmented LQR that uses the same weights in all nominal and
-  robustness cases (difference ≤ 2·10⁻¹⁰ kN) and in 190 of the 200 Monte Carlo samples; in the
+  robustness cases (largest difference 1·10⁻¹⁰ kN) and in 190 of the 200 Monte Carlo samples; in the
   other 10 the commands differ by up to 0.46 kN, starting in the saturated initial phase, with
   identical 5 % settling times and work differences of at most 0.03 kJ (`equivalence_all.json`). The MPC therefore differs from linear
   state feedback essentially only when state constraints are imposed (MPC-SC). The LQR and MPC
@@ -691,8 +692,11 @@ Main findings:
   nominal rope length).
 * **Robustness of the PID.** The nominal advantage of the PID (optimal) is not robust. In
   the Monte Carlo study its median 5 % settling time is 11.2 s, against 6.7 s for LQR and
-  6.9 s for MPC. The cause is that the two integrators saturate in opposition at the
-  anti-windup bounds (`offset_sweep.json`). Its nominal response relies on the active
+  6.9 s for MPC. No single sampled quantity explains this (Spearman |ρ| ≤ 0.30,
+  `mc_correlations.json`): the nominal tuning is a sharp optimum, which small deviations of the
+  rope length or the initial swing already degrade (`pid_sensitivity.json`), and for initial
+  offsets of 1 m and more both integrators saturate in opposition at their anti-windup bounds
+  (`offset_sweep.json`). Its nominal response relies on the active
   anti-windup bound of the swing integrator: without it, the overshoot in the tuning test rises
   from 2.1 % to 39 % (`swing_integrator_bound.json`). A PID with integral action in the trolley
   channel only, tuned to the same specifications, reduces to PD (`trolley_integral.json`).
