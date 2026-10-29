@@ -22,11 +22,12 @@ Authors: O. Podlesny, O. Sheremet.
 4. [Controllers](#controllers)
 5. [Scenarios](#scenarios)
 6. [Metrics](#metrics)
-7. [Reproducing the results](#reproducing-the-results)
-8. [Output files](#output-files)
-9. [Verification of the numerical tools](#verification-of-the-numerical-tools)
-10. [Main results](#main-results)
-11. [Notes and limitations](#notes-and-limitations)
+7. [Numerical experiments](#numerical-experiments)
+8. [Reproducing the results](#reproducing-the-results)
+9. [Output files](#output-files)
+10. [Verification of the numerical tools](#verification-of-the-numerical-tools)
+11. [Main results](#main-results)
+12. [Notes and limitations](#notes-and-limitations)
 
 ---
 
@@ -200,6 +201,231 @@ Defined in `sim/metrics.py` and computed in the same way for every controller.
 | `Trope` | peak rope tension (kN) |
 | `qp_*`, `term_ok_frac` | QP solve times; fraction of samples at which the terminal state lies in O_inf (MPC only) |
 
+## Numerical experiments
+
+The study consists of a tuning stage, fourteen closed-loop experiments (E1–E14) and three
+verification experiments for the numerical tools (V1–V3). All of them are run by the scripts in
+`scripts/`; no other code is needed.
+
+| Id | Experiment | Controllers | Runs | Script | Output |
+|---|---|---|---|---|---|
+| E1 | specification-based PD/PID tuning | PD, 4 × PID | 5 × 4 seeds + 20 restarts | `run_tuning.py` | `gains.json` |
+| E2 | nominal comparison, S1-S5 | all 8 | 40 | `run_experiments.py nominal` | `metrics_nominal.json`, Figs. 3, 4, 6 |
+| E3 | one-at-a-time parameter variations, R1-R7 | all 8 | 56 | `run_experiments.py robust` | `metrics_robust.json` |
+| E4 | Monte Carlo robustness study | all 8 | 1600 | `run_experiments.py montecarlo` | `metrics_montecarlo.json`, Fig. 7 |
+| E5 | same tests on the linear design model | all 8 | 16 | `run_experiments.py linear` | `metrics_linear.json` |
+| E6 | MPC vs saturated augmented LQR | MPC, SatLQR-MPCw | 8 | `run_experiments.py equivalence` | `metrics_equivalence.json` |
+| E7 | ablation of the integral action | PID (optimal) | 18 | `run_experiments.py ablation` | `metrics_ablation.json` |
+| E8 | reference-ramp baseline, S2r | PD, PID (optimal), PID (hard), LQR, MPC | 5 | `run_experiments.py ramp` | `metrics_ramp.json` |
+| E9 | validity range of the linear design model | PD, PID (optimal), LQR | 27 × 2 | `run_linearization.py` | `linearization.json` |
+| E10 | MPC prediction horizon, N = 50 vs 100 | MPC | 6 | `run_horizon_check.py` | `horizon_check.json` |
+| E11 | QP solve time and terminal-set membership | MPC, MPC-SC | 10 | `run_timing.py` | `qp_timing.json` |
+| E12 | rope tension (taut-rope assumption) | all 8 | 96 | `check_rope_tension.py` | `rope_tension_check.json` |
+| E13 | initial-offset sweep; Monte Carlo rank correlations | PD, PID (optimal), LQR, MPC | 16 | `run_offset_sweep.py` | `offset_sweep.json`, `mc_correlations.json` |
+| E14 | local sensitivity of the reference case | PD, PID (optimal), LQR, MPC | 36 | `run_pid_sensitivity.py` | `pid_sensitivity.json` |
+| V1 | plant verification | — | — | `check_plant.py` | `plant_verification.txt` |
+| V2 | QP solver verification | — | 80 QPs | `check_qp.py` | `qp_verification.txt` |
+| V3 | integration accuracy | PID (optimal), LQR, MPC | 3 × 3 | `check_integration.py` | `integration_check.txt` |
+
+### Common evaluation protocol
+
+Every closed-loop run (E2–E14, V3) follows the same procedure (`sim/simulate.py: run_nonlinear`):
+
+1. **Initial state.** The plant starts at rest in a consistent configuration. The trolley is at
+   x_T(0). The beam CoM is placed according to the scenario: initial swing φ(0), lateral offset
+   y_CoM(0) and yaw θ(0). The dependent coordinates are computed so that both rope constraints
+   hold exactly (`plant.initial_state`).
+2. **Task.** The trolley is brought from x_T(0) to x_T = 0 and the swing is damped (a
+   point-to-point move). In S2r the controllers instead track the ramp
+   x_ref(t) = sign(x_T(0))·max(|x_T(0)| − 0.5 t, 0).
+3. **Measurement and control.** Every T_s = 0.02 s the controller receives
+   [x_T, ẋ_T, x_CoM − x_T, ẋ_CoM − ẋ_T] (`plant.measured`). This is the full longitudinal state,
+   without noise or delay. The controller returns the drive force, which is limited to ±10 kN
+   and held constant until the next sample (ZOH).
+4. **Plant.** Between samples the nonlinear plant is integrated by RK4 with h = 0.5 ms. The
+   following act inside the plant: travel resistance, damping, the horizontal force on the beam
+   (S5) and, where specified, the drive lag τ (R7, Monte Carlo).
+5. **Evaluation.** Each run lasts 30 s. The metrics are computed from the logged signals by
+   `sim/metrics.py`, identically for all controllers. Time series are stored in
+   `results/runs/<group>/<scenario>/<controller>.npz` (except in E4).
+6. **No retuning.** All controllers are designed once, for the nominal parameters. In R1-R7 and
+   in the Monte Carlo study the same gains and the same MPC prediction model are applied to a
+   plant with different parameters.
+
+### E1. Specification-based PD/PID tuning (`run_tuning.py`, `sim/tuning.py`)
+
+*Purpose.* To obtain PD and four PID variants, each tuned to its own explicitly stated
+specifications (Section [PD/PID tuning specifications](#pdpid-tuning-specifications-simtuningpy)).
+The comparison is then not tied to one arbitrary gain set.
+
+*Closed loop used for tuning.* The design model is discretised exactly (ZOH, T_s = 0.02 s, 30 s
+horizon). The loop includes the same saturation and conditional-integration anti-windup as the
+evaluation runs. Each candidate gain vector (K_pT, K_iT, K_dT, K_pα, K_iα, K_dα) is simulated in
+two tests:
+
+* regulation from x_T(0) = 0.5 m, with all other states zero;
+* the system at rest under a constant force of −0.35 kN on the trolley. This force is about the
+  nominal Coulomb travel resistance: 0.008 · 4500 kg · 9.81 m/s² ≈ 0.35 kN.
+
+*Objective.* J = ITAE(regulation) + ITAE(disturbance) + 100·v. Here v is the sum of normalised
+violations of four specifications:
+
+* peak unsaturated force (normalised by 0.5 kN);
+* overshoot (by 1 %);
+* peak swing (by 0.05°);
+* minimum damping ratio of the closed-loop poles (by 0.05).
+
+In addition, a candidate whose regulation response does not settle within 30 s gets a penalty of
+one unit in v. Candidates with a closed-loop spectral radius ≥ 1, or with a diverging
+simulation, are rejected.
+
+*Search.*
+
+* Bounds: K_pT ∈ [0, 200] kN/m, K_iT ∈ [0, 200] kN/(m·s), K_dT ∈ [0, 400] kN·s/m,
+  K_pα ∈ [−3000, 3000] kN/rad, K_iα ∈ [−1000, 1000] kN/(rad·s), K_dα ∈ [−3000, 3000] kN·s/rad.
+  PD has only the four proportional and derivative gains.
+* Optimiser: differential evolution (Sobol initialisation, population 50, at most 1000
+  generations), followed by restarted Nelder-Mead refinement. Each variant is run with 4 random
+  seeds.
+* Second pass: each PID variant is restarted from the best solution of every other variant and of
+  PD. The stochastic search therefore cannot return a worse optimum than a nested special case.
+* The lowest-cost solution is kept. All costs found are stored in `gains.json` (`all_costs`),
+  together with the design metrics of the selected gains.
+
+### E2. Nominal comparison (`run_experiments.py nominal`)
+
+All eight controllers are run in scenarios S1-S5 on the nominal plant (40 runs). This is the
+main comparison. It gives settling times in the 5 % and 2 % bands, overshoot, peak and residual
+swing, peak force, work, peak rope tension and the MPC solver statistics. Figures 3 and 4 show
+S1 and Fig. 6 shows S2. S4 is compared with S1 to quantify the out-of-plane coupling: the extra
+trolley and swing deviation caused by y_CoM(0) = 0.2 m and θ(0) = 5°. S5 tests the rejection of
+a constant horizontal force on the beam.
+
+### E3. Parameter variations (`run_experiments.py robust`)
+
+All eight controllers are run with x_T(0) = 0.5 m on seven perturbed plants, R1-R7 (56 runs).
+Each plant changes one parameter:
+
+* beam mass ±25 %;
+* rope length ±33 %;
+* no dissipation at all;
+* double travel resistance;
+* a 0.1 s drive lag.
+
+The controllers keep their nominal design.
+
+### E4. Monte Carlo study (`run_experiments.py montecarlo`)
+
+There are 200 random cases (seed 2026). In each case seven quantities are drawn simultaneously
+and uniformly from the ranges in [Scenarios](#scenarios): m2, l, μ, ζ, τ, x_T(0) and φ(0). All
+eight controllers are run on each case, 1600 runs in total. Only the metrics are stored, and the
+sampled values are saved under `_sample`. A run that does not settle within 30 s has
+`Ts = inf`. The distributions are shown in Fig. 7. The medians and percentiles are taken over
+all 200 cases.
+
+### E5. Linear design model as the plant (`run_experiments.py linear`)
+
+S1 and S2 are repeated with the linear design model as the plant (16 runs). The model is
+discretised exactly with 40 sub-steps per sample for the work integral. It has no friction, no
+damping and no disturbance. Comparison with E2 shows how much of each controller's behaviour is
+already explained by the linear model. In particular, it shows how much is caused by
+dissipation and by the out-of-plane dynamics, which only the evaluation plant contains.
+
+### E6. MPC versus saturated augmented LQR (`run_experiments.py equivalence`)
+
+The MPC is compared with the saturated linear feedback u = sat(−K_a ξ) in S1, S2, S3 and S5
+(8 runs). The feedback K_a is the terminal law of the MPC: the DARE solution for the state
+augmented with u_{k−1}, which includes the R_Δu cross term. If the two trajectories coincide, the
+input-constrained MPC adds nothing to linear state feedback with the same weights.
+
+### E7. Ablation of the integral action (`run_experiments.py ablation`)
+
+PID (optimal) is run with its two integral gains scaled by factors (c_T, c_α), giving
+K_iT → c_T·K_iT and K_iα → c_α·K_iα (18 runs):
+
+* (c_T, c_α) ∈ {(0, 0), (0, 1), (1, 0), (0.5, 0.5), (1, 1), (1.5, 1.5), (2, 2)} in S1 and S5;
+* (c_T, c_α) ∈ {(0, 0), (0, 1), (1, 0), (1, 1)} in R6 (double travel resistance).
+
+The experiment separates the role of each integrator in settling, in the residual position
+error under friction and in the rejection of a constant force.
+
+### E8. Reference-ramp baseline (`run_experiments.py ramp`)
+
+S2 is repeated with a reference ramp of 0.5 m/s (S2r), equal to the trolley-speed limit of
+MPC-SC (5 runs). It is run for PD, PID (optimal), PID (hard), LQR and MPC. This shows how much of
+the MPC-SC behaviour in the large move can be obtained by simple reference shaping. The swing
+and speed limits are then not enforced explicitly.
+
+### E9. Validity range of the linear design model (`run_linearization.py`)
+
+PD, PID (optimal) and LQR are each simulated twice: on the linear design model and on the
+nonlinear plant. The nonlinear plant here has friction and damping removed, so that the
+difference comes only from the geometric nonlinearity. The amplitude is increased through
+x_T(0) ∈ {0.5, 1, 2, 3, 5} m and through φ(0) ∈ {2, 5, 10, 15}° (27 pairs of runs). The
+experiment records three quantities: the peak swing, and the maximum deviations in x_T and φ
+relative to their peaks. It also records the maximum difference in the control force.
+
+### E10. MPC prediction horizon (`run_horizon_check.py`)
+
+The MPC is run with N = 50 and N = 100 in S1-S3 on the nonlinear plant. The experiment records
+the maximum difference between the applied forces and the fraction of samples at which the
+predicted terminal state lies in the terminal set O_inf. The terminal set is not imposed as a
+constraint; it is checked a posteriori. If the terminal state lies in O_inf, the Riccati terminal
+cost equals the exact infinite-horizon cost, so the 2 s horizon is long enough.
+
+### E11. QP solve time and terminal set (`run_timing.py`)
+
+MPC and MPC-SC are run in S1-S5 in a single process, on an otherwise idle machine. The script
+records the wall-clock time of every QP solve (mean, 99th percentile and maximum) and the
+number of solver iterations. It also checks a posteriori, at every sample, whether the predicted
+terminal state lies in O_inf, and records the time from which this holds. The `qp_*` values in `metrics_*.json` come
+from parallel batch runs and are not representative.
+
+### E12. Rope tension (`check_rope_tension.py`)
+
+All runs of E2 and E3 are repeated: 12 scenarios × 8 controllers = 96 runs. Both rope tensions
+are recorded at every RK4 node (0.5 ms). The minimum over all runs must stay positive for the
+inextensible-rope model to be valid. The maximum gives the peak rope load.
+
+### E13. Initial-offset sweep and Monte Carlo correlations (`run_offset_sweep.py`)
+
+*Offset sweep.* PD, PID (optimal), LQR and MPC are run on the nominal plant with
+x_T(0) ∈ {0.5, 1.0, 1.5, 2.0} m (16 runs). The script records the settling time, the final
+position error and the peak swing. For the PID it also records the final integral contributions
+K_iT·ξ_T and K_iα·ξ_α. These show whether the two integrators end at their anti-windup bounds
+±F_max with opposite signs, which explains the loss of performance of PID (optimal) in E4.
+
+*Correlations.* The script computes Spearman rank correlations between the Monte Carlo settling
+time of each controller and each sampled quantity, and also |l − 6 m|. Runs that do not settle
+are assigned 40 s.
+
+### E14. Local sensitivity of the reference case (`run_pid_sensitivity.py`)
+
+S1 is repeated for PD, PID (optimal), LQR and MPC on a 3 × 3 grid (36 runs): rope length
+l ∈ {5.5, 6.0, 6.5} m and initial swing φ(0) ∈ {−1.5°, 0°, +1.5°}. The experiment records the
+settling time and the overshoot. It tests whether the nominal advantage of PID (optimal) in S1
+persists under small model errors, or whether it is a sharp optimum.
+
+### V1–V3. Verification of the numerical tools
+
+* **V1, plant (`check_plant.py`).**
+  * The conservative plant (μ = c_v = ζ = 0) is linearised numerically at the equilibrium
+    (central differences). Its eigenvalues are compared with the analytical frequencies of the
+    coupled, lateral and torsional modes.
+  * A 30 s free 3-D motion is simulated, starting from x_CoM = 0.8 m, y_CoM = 0.5 m and
+    θ = 10°. It checks energy conservation and the drift of the rope constraints.
+  * The static rope tensions are compared with m2·g/2.
+* **V2, QP solver (`check_qp.py`).** 40 random strictly convex QPs are generated (n = 30,
+  seed 0). In the box-constrained form they are solved by the interior-point solver and by SciPy
+  BVLS. With 20 additional random general inequalities (80 constraints in total) they are solved
+  by the interior-point solver and by SLSQP.
+* **V3, integration (`check_integration.py`).** Three runs (S1 with PID (optimal), S2 with LQR,
+  S4 with MPC) are repeated three times: with RK4 at h = 0.5 ms, with RK4 at h = 0.25 ms, and
+  with DOP853 (rtol 10⁻¹¹, atol 10⁻¹²) over every sampling interval with the same ZOH input.
+
+The results are summarised in
+[Verification of the numerical tools](#verification-of-the-numerical-tools).
+
 ## Reproducing the results
 
 Run the scripts from the repository root, in the order below. Each script overwrites its
@@ -262,7 +488,7 @@ The first call of each process includes the Numba JIT compilation of the plant.
 | `results/gains.json` | PD/PID gains, specifications, design metrics, optimiser settings | `run_tuning.py` |
 | `results/metrics_nominal.json` | S1-S5, all controllers | `run_experiments.py nominal` |
 | `results/metrics_robust.json` | R1-R7 | `run_experiments.py robust` |
-| `results/metrics_linear.json` | S1 on the linear design model | `run_experiments.py linear` |
+| `results/metrics_linear.json` | S1 and S2 on the linear design model | `run_experiments.py linear` |
 | `results/metrics_equivalence.json` | MPC vs saturated augmented LQR (S1, S2, S3, S5) | `run_experiments.py equivalence` |
 | `results/metrics_ablation.json` | PID (optimal) with scaled integral gains (S1, S5) | `run_experiments.py ablation` |
 | `results/metrics_ramp.json` | S2r (reference ramp) | `run_experiments.py ramp` |
