@@ -7,7 +7,7 @@ three-dimensional multibody plant. The protocol fixes the sampling period, the a
 the time horizon and the metric definitions. Every number, table and figure of the study is
 regenerated from the scripts in this repository.
 
-Authors: O. Podlesny, O. Sheremet.
+Authors: S. Podlesny, O. Sheremet.
 
 > The manuscript itself, the correspondence with the journal and the reviewer reports are
 > **not** part of this repository. Only code, numerical results and figures are included.
