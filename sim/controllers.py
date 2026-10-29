@@ -36,7 +36,7 @@ class PID:
         u_un = (self.KpT * eT + self.KiT * self.xiT + self.KdT * deT
                 + self.Kpa * al + self.Kia * self.xia + self.Kda * dal)
         u = float(np.clip(u_un, -self.Fmax, self.Fmax))
-        sat = abs(u_un) > self.Fmax
+        sat = abs(u_un) > self.Fmax + P.SAT_TOL
         for ch, (Ki, e) in enumerate(((self.KiT, eT), (self.Kia, al))):
             if Ki == 0.0:
                 continue
@@ -116,7 +116,8 @@ class MPC:
     min_U  sum_{k=0}^{N-1} [x_k' Q x_k + R u_k^2 + Rdu (u_k - u_{k-1})^2] + xi_N' P_aug xi_N
     s.t.   x_{k+1} = Ad x_k + Bd u_k,  |u_k| <= F_max,
            optionally |x_CoM,k| <= l*alpha_max and |dx_T,k| <= v_max (k = 1..N, softened by two
-           non-negative slacks with an exact L1 + quadratic penalty),
+           non-negative slacks shared over the horizon, i.e. infinity-norm softening, with an exact
+           linear + quadratic penalty),
     xi_N = [x_N; u_{N-1}]; P_aug from the DARE of the same stage cost, i.e. the unconstrained
     infinite-horizon cost-to-go of the terminal LQR law u = -K_aug xi.
     Input-constrained problem: exact BVLS (SciPy lsq_linear). With state constraints: primal-dual
@@ -186,7 +187,12 @@ class MPC:
 
     def _solve_box(self, f):
         d = -np.linalg.solve(self.L, f)
-        res = lsq_linear(self.L.T, d, bounds=(-self.Fmax, self.Fmax), method='bvls', tol=1e-12)
+        # the SciPy default iteration cap of BVLS (number of variables) is too small for the saturated
+        # start of S2; a non-converged solve is an error, not a silently returned plan
+        res = lsq_linear(self.L.T, d, bounds=(-self.Fmax, self.Fmax), method='bvls', tol=1e-12,
+                         max_iter=20 * self.N)
+        if res.status <= 0:
+            raise RuntimeError(f'BVLS did not converge (status {res.status}, {res.nit} iterations)')
         return res.x, res.nit
 
     def _solve_state(self, f, x0):

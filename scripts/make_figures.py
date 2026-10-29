@@ -195,7 +195,9 @@ def fig7():
     mc = metrics('montecarlo')
     keys = [k for k in mc]
     names = setup.ALL
-    lab = ['PD', 'PID\nsoft', 'PID\nopt.', 'PID\nmed.', 'PID\nhard', 'LQR', 'MPC', 'MPC\nSC']
+    short = {'PD': 'PD', 'PID (soft)': 'PID\nsoft', 'PID (medium)': 'PID\nmed.', 'PID (optimal)': 'PID\nopt.',
+             'PID (hard)': 'PID\nhard', 'LQR': 'LQR', 'MPC': 'MPC', 'MPC-SC': 'MPC\nSC'}
+    lab = [short[nm] for nm in names]          # labels follow the order of the data
     panels = [('Ts', 'Settling time $t_s$ (s)', None), ('phi_peak', r'Peak swing $|\varphi|_{\max}$ (deg)', None),
               ('work', 'Absolute mechanical work (kJ)', None), ('e_final_mm', r'$|x_\mathrm{T}(30\ \mathrm{s})|$ (mm)', 'log')]
     fig, axs = plt.subplots(2, 2, figsize=(9.6, 6.6))

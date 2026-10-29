@@ -4,3 +4,5 @@ S2 LQR            RK4 h=0.50 ms vs DOP853: max|dx_T|=1.85e-06 m, max|dphi|=1.75e
 S2 LQR            RK4 h=0.25 ms vs DOP853: max|dx_T|=1.08e-07 m, max|dphi|=1.02e-06 deg, max|dtheta|=0.00e+00 deg
 S4 MPC            RK4 h=0.50 ms vs DOP853: max|dx_T|=5.23e-07 m, max|dphi|=4.99e-06 deg, max|dtheta|=1.33e-08 deg
 S4 MPC            RK4 h=0.25 ms vs DOP853: max|dx_T|=3.02e-08 m, max|dphi|=2.89e-07 deg, max|dtheta|=7.72e-10 deg
+R7 PID (hard)     RK4 h=0.50 ms vs DOP853: max|dx_T|=1.60e-06 m, max|dphi|=1.58e-05 deg, max|dtheta|=0.00e+00 deg
+R7 PID (hard)     RK4 h=0.25 ms vs DOP853: max|dx_T|=5.68e-08 m, max|dphi|=5.39e-07 deg, max|dtheta|=0.00e+00 deg

@@ -18,6 +18,8 @@ from .linear import c2d, pid_closed_loop, z_to_s, damping_ratios, pid_structural
 
 
 D_TEST = -0.35   # kN, constant trolley-side disturbance of the tuning test (~ nominal Coulomb force)
+SAT_TOL = P.SAT_TOL   # frozen into the Numba cache: delete __pycache__ after changing params.SAT_TOL
+KI_ZERO = 1e-9   # integral gains below this value are treated as zero
 
 
 @njit(cache=True)
@@ -36,7 +38,7 @@ def pid_sim_linear(g, Ad, Bd, l, Ts, x0, n, Fmax, d=0.0):
         al, dal = x[2] / l, x[3] / l
         u_un = KpT * eT + KiT * xiT + KdT * deT + Kpa * al + Kia * xia + Kda * dal
         u = min(max(u_un, -Fmax), Fmax)
-        sat = abs(u_un) > Fmax
+        sat = abs(u_un) > Fmax + SAT_TOL
         U[k] = u
         Uun[k] = u_un
         if KiT != 0.0:
@@ -76,8 +78,10 @@ BOUNDS = [(0.0, 200.0),      # KpT  kN/m
 
 class Tuner:
     def __init__(self, spec, integral=True, swing_integral=True, x0=0.5, Ts=P.TS, T=P.T_END,
-                 Fmax=P.F_MAX):
-        """integral=False: PD; swing_integral=False: integral action in the trolley channel only."""
+                 Fmax=P.F_MAX, fixed=None):
+        """integral=False: PD; swing_integral=False: integral action in the trolley channel only;
+        fixed: {index: value} of gains (KpT, KiT, KdT, Kpa, Kia, Kda) held fixed during the search."""
+        self.fixed = dict(fixed or {})
         A, B, _, _ = P.linear_model()
         Ad, Bd = c2d(A, B, Ts)
         self.Ad, self.Bd = np.ascontiguousarray(Ad), np.ascontiguousarray(Bd)
@@ -90,15 +94,23 @@ class Tuner:
     def free(self):
         """Indices of the free gains in (KpT, KiT, KdT, Kpa, Kia, Kda)."""
         if not self.integral:
-            return [0, 2, 3, 5]
-        return [0, 1, 2, 3, 5] if not self.swing_integral else [0, 1, 2, 3, 4, 5]
+            idx = [0, 2, 3, 5]
+        else:
+            idx = [0, 1, 2, 3, 5] if not self.swing_integral else [0, 1, 2, 3, 4, 5]
+        return [i for i in idx if i not in self.fixed]
 
     def full(self, p):
         g = np.zeros(6)
         g[self.free()] = np.array(p, float)
+        for i, v in self.fixed.items():
+            g[i] = v
         return g
 
     def evaluate(self, g):
+        g = np.array(g, float)
+        # an integral gain below 1e-9 is treated as zero: otherwise the integrator pole at 1 - O(Ki) makes
+        # the stability test rho < 1 depend on rounding as Ki -> 0
+        g[[1, 4]] = np.where(np.abs(g[[1, 4]]) < KI_ZERO, 0.0, g[[1, 4]])
         X, U, Uun, ok = pid_sim_linear(g, self.Ad, self.Bd, self.l, self.Ts,
                                        np.array([self.x0, 0, 0, 0.0]), self.n, self.Fmax, 0.0)
         Xd, Ud, Uund, okd = pid_sim_linear(g, self.Ad, self.Bd, self.l, self.Ts,

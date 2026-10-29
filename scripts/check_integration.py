@@ -2,7 +2,7 @@
 
 Reference: SciPy solve_ivp (DOP853, rtol = 1e-11, atol = 1e-12) over every sampling interval
 with the same zero-order-hold input. Compared: fixed-step RK4 with h = 0.5 ms (used in all runs)
-and h = 0.25 ms.
+and h = 0.25 ms, for S1, S2, S4 and the drive-lag case R7.
 """
 import os as _os
 for _v in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS'):
@@ -38,8 +38,10 @@ def run(ctrl, sc, mode, h=P.H_INT):
     return X
 
 
-for sk, cname in [('S1', 'PID (optimal)'), ('S2', 'LQR'), ('S4', 'MPC')]:
-    sc = SC.nominal_set()[sk]
+CASES = [('S1', 'PID (optimal)'), ('S2', 'LQR'), ('S4', 'MPC'), ('R7', 'PID (hard)')]
+SETS = {**SC.nominal_set(), **SC.robustness_set()}
+for sk, cname in CASES:
+    sc = SETS[sk]
     ref = run(setup.build(cname), sc, 'ivp')
     for h in (0.0005, 0.00025):
         X = run(setup.build(cname), sc, 'rk4', h)

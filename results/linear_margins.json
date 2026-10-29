@@ -1,0 +1,72 @@
+{
+ "PD": {
+  "l_unstable_from": null,
+  "l_unstable_to": null,
+  "rho_l8": 0.988726854643441,
+  "s_l8": [
+   -0.5668584439372881,
+   0.9382048755473459
+  ],
+  "tau_crit": null
+ },
+ "PID (soft)": {
+  "l_unstable_from": 6.77,
+  "l_unstable_to": 8.0,
+  "rho_l8": 1.0044287098318117,
+  "s_l8": [
+   0.2209465977357667,
+   0.3841707634949772
+  ],
+  "tau_crit": null
+ },
+ "PID (medium)": {
+  "l_unstable_from": 7.21,
+  "l_unstable_to": 8.0,
+  "rho_l8": 1.0026305956753447,
+  "s_l8": [
+   0.13135708572657692,
+   0.6051227535273365
+  ],
+  "tau_crit": null
+ },
+ "PID (optimal)": {
+  "l_unstable_from": 7.85,
+  "l_unstable_to": 8.0,
+  "rho_l8": 1.000431520328417,
+  "s_l8": [
+   0.021571362514804283,
+   0.7437875277253386
+  ],
+  "tau_crit": null
+ },
+ "PID (hard)": {
+  "l_unstable_from": null,
+  "l_unstable_to": null,
+  "rho_l8": 0.9962351415707393,
+  "s_l8": [
+   -0.18859816735179788,
+   0.8536897644156275
+  ],
+  "tau_crit": 0.05
+ },
+ "LQR": {
+  "l_unstable_from": null,
+  "l_unstable_to": null,
+  "rho_l8": 0.9953433777928695,
+  "s_l8": [
+   -0.23337490242890913,
+   0.339206118540489
+  ],
+  "tau_crit": 0.074
+ },
+ "MPC": {
+  "l_unstable_from": null,
+  "l_unstable_to": null,
+  "rho_l8": 0.9934756891483155,
+  "s_l8": [
+   -0.3272843597866311,
+   0.6195021203164539
+  ],
+  "tau_crit": 0.082
+ }
+}

@@ -29,6 +29,9 @@ BAUMGARTE = 20.0     # Baumgarte constraint stabilisation (alpha = beta), 1/s
 
 # --- control / protocol ------------------------------------------------------------------
 F_MAX = 10.0         # actuator force limit, kN
+SAT_TOL = 1e-9       # the command counts as saturated (anti-windup) only above F_MAX + SAT_TOL, kN;
+                     # the force budget of PD and PID (optimal) equals F_MAX, so their first command
+                     # lies on the threshold and the decision must not depend on rounding
 TS = 0.02            # common controller sampling period, s
 T_END = 30.0         # unified evaluation horizon, s
 H_INT = 0.0005       # RK4 integration step of the plant, s

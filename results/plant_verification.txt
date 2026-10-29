@@ -13,5 +13,5 @@ Eigenvalues of the linearised multibody plant (12 states, incl. 4 Baumgarte mode
    -0.00000 +3.83601j
 Analytical (Eq. 15): w_y=1.27867 (T=4.914 s), w_theta=sqrt(3g/l)=2.21472 (T=2.837 s), w_c=3.83601 (T=1.638 s)
 Old manuscript value w_theta=(a/l)sqrt(2g/l)=0.66305 (T=9.476 s)
-Free 3-D motion (x_CoM=0.8 m, y_CoM=0.5 m, theta=10 deg), 30 s, RK4 h=0.0005s: max|E-E0|=8.027e-08 J (E0 rel 3.41e-13), max constraint residual=6.44e-13 m, cpu=1.0s
+Free 3-D motion (x_CoM=0.8 m, y_CoM=0.5 m, theta=10 deg), 30 s, RK4 h=0.0005s: max|E-E0|=8.027e-08 J (E0 rel 3.41e-13), max constraint residual=6.44e-13 m, cpu=0.4s
 Static rope tensions: 19620.0 N, 19620.0 N (m2 g/2 = 19620.0 N)

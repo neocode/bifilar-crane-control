@@ -26,12 +26,14 @@ def compute(log, xT0):
     m['band2'] = max(0.02 * abs(xT0), 0.01)                  # 2 % band (minimum 10 mm)
     m['Ts2'] = settling_time(t, xT, m['band2'])
     m['Ts_phi'] = settling_time(t, phi, PHI_BAND_DEG)
-    m['overshoot'] = (max(0.0, -np.sign(xT0) * np.min(np.sign(xT0) * xT)) / abs(xT0) * 100.0
+    m['overshoot'] = (max(0.0, -np.min(np.sign(xT0) * xT)) / abs(xT0) * 100.0   # excursion beyond the target
                       if xT0 != 0 else np.nan)
     m['Fpeak'] = np.max(np.abs(u))
     m['work'] = log['work'] / 1000.0                       # kJ
     m['phi_peak'] = np.max(np.abs(phi))
     m['phi_res'] = np.max(np.abs(phi[t >= t[-1] - 5.0]))   # max |phi| over last 5 s
+    last = phi[t >= t[-1] - 5.0]
+    m['phi_osc'] = 0.5 * (np.max(last) - np.min(last))     # swing oscillation amplitude over last 5 s
     m['IAE'] = np.trapezoid(np.abs(xT), t)
     m['ITAE'] = np.trapezoid(t * np.abs(xT), t)
     m['Trope'] = np.nanmax(log['Trope']) / 1000.0 if np.any(np.isfinite(log['Trope'])) else np.nan

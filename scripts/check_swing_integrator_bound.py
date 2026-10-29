@@ -28,7 +28,7 @@ def regulation_test(g, swing_bound=True, x0=0.5, T=P.T_END, Ts=P.TS, Fmax=P.F_MA
         eT, al = -x[0], x[2] / l
         u_un = KpT * eT + KiT * xiT - KdT * x[1] + Kpa * al + Kia * xia + Kda * x[3] / l
         u = min(max(u_un, -Fmax), Fmax)
-        sat = abs(u_un) > Fmax
+        sat = abs(u_un) > Fmax + P.SAT_TOL
         if KiT != 0.0 and not (sat and np.sign(KiT * eT) == np.sign(u_un)):
             b = Fmax / abs(KiT)
             xiT = min(max(xiT + Ts * eT, -b), b)

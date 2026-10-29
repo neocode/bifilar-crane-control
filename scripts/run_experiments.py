@@ -3,8 +3,9 @@
 Groups (results/metrics_<group>.json, time series in results/runs/<group>/):
   nominal     : scenarios S1-S5, all controllers, nonlinear plant
   robust      : parameter / dissipation / actuator variations R1-R7 (x_T(0) = 0.5 m)
-  linear      : scenario S1 on the linear design model (linearisation check)
-  equivalence : MPC versus saturated LQR with the MPC weights (S1, S2, S3)
+  linear      : scenarios S1 and S2 on the linear design model (linearisation check)
+  equivalence : MPC versus saturated LQR with the MPC weights (S1, S2, S3, S5; all cases in
+                run_equivalence_all.py)
   ablation    : PID (optimal) with scaled integral gains (S1 and S5)
   montecarlo  : 200 random plants / initial conditions
 Usage: python run_experiments.py [group ...]

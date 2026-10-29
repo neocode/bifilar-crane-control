@@ -31,7 +31,9 @@ def collect():
     R['gains'] = {k: v['gains'] for k, v in G.items() if not k.startswith('_')}
     R['specs'] = {k: v['spec'] for k, v in G.items() if not k.startswith('_')}
     R['design'] = {k: v['design_metrics'] for k, v in G.items() if not k.startswith('_')}
-    R['tune'] = {k: dict(cost=v['cost'], all_costs=v['all_costs']) for k, v in G.items() if not k.startswith('_')}
+    R['tune'] = {k: dict(cost=v['cost'], all_costs=v['all_costs'], itae_r=v['design_metrics']['ITAE'],
+                         itae_d=v['design_metrics']['ITAE_d']) for k, v in G.items() if not k.startswith('_')}
+    R['satthr'] = J('saturation_threshold.json')
     K, Pm, evz = setup.lqr_gain()
     R['K_lqr'] = K.ravel().tolist()
     evs = z_to_s(evz, P.TS)
@@ -94,39 +96,66 @@ def collect():
                       e_p95=float(np.percentile([r['e_final_mm'] for r in ok], 95)),
                       vmax_p95=float(np.percentile([r['vT_peak'] for r in ok], 95)),
                       fallbacks=int(sum(r.get('fallbacks', 0) for r in ok)))
-    # limit cycles: sustained force oscillation, RMS force over the last 10 s above 1 kN
-    lc = {}
+    # sustained oscillations (results/limit_cycles.json): runs flagged at 30 s (RMS force above 1 kN or swing
+    # oscillation above 0.1 deg over the last seconds) and classified after a 300 s continuation
+    import math
+    LL = J('limit_cycles.json')
+    cls = {k: r['class'] for k, r in LL.items() if k != '_summary'}
+
+    def cl(group, key, c):
+        return cls.get(f'{group}/{key}/{c}', 'none')
+
+    mc_keys = [k for k in R['mc'] if k.startswith('MC')]
+    lc, sw = {}, {}
     for c in setup.ALL:
-        ks = [k for k in R['mc'] if 'failed' not in R['mc'][k][c] and R['mc'][k][c]['u_rms_res'] > 1.0]
-        mcs[c]['lc'] = len(ks) / len(R['mc'])
-        mcs[c]['converged'] = sum(1 for k in R['mc'] if 'failed' not in R['mc'][k][c]
+        lc[c] = [k for k in mc_keys if cl('montecarlo', k, c) == 'limit_cycle']
+        sw[c] = [k for k in mc_keys if cl('montecarlo', k, c) == 'swing_oscillation']
+        n = len(mc_keys)
+        mcs[c]['lc'] = len(lc[c]) / n
+        mcs[c]['swosc'] = len(sw[c]) / n
+        mcs[c]['sustained'] = (len(lc[c]) + len(sw[c])) / n
+        mcs[c]['converged'] = sum(1 for k in mc_keys if 'failed' not in R['mc'][k][c]
                                   and np.isfinite(R['mc'][k][c]['Ts'])
-                                  and R['mc'][k][c]['u_rms_res'] <= 1.0) / len(R['mc'])
-        lc[c] = ks
-    # flagged runs that the 300 s continuation (results/limit_cycles.json) shows to be stationary
-    flag = {c: list(ks) for c, ks in lc.items()}
-    LL = J('limit_cycles.json') if os.path.exists(os.path.join(RES, 'limit_cycles.json')) else None
-    trans = []
-    if LL is not None:
-        def stationary(k, c):
-            r = LL[f'{k}/{c}']['rms_kN']
-            return r['290-300'] > 1.0 and abs(r['290-300'] / r['20-30'] - 1.0) < 0.1
-        for c in lc:
-            trans += [(k, c) for k in lc[c] if not stationary(k, c)]
-            lc[c] = [k for k in lc[c] if stationary(k, c)]
-            mcs[c]['lc'] = len(lc[c]) / len(R['mc'])
+                                  and cl('montecarlo', k, c) in ('none', 'decaying')) / n
+        mcs[c]['settled_osc'] = sum(1 for k in lc[c] + sw[c] if np.isfinite(R['mc'][k][c]['Ts']))
+    force_flag = {c: [k for k in mc_keys if R['mc'][k][c].get('u_rms_res', 0) > 1.0] for c in setup.ALL}
+    trans = [(k, c) for c in setup.ALL for k in force_flag[c] if cl('montecarlo', k, c) != 'limit_cycle']
     allk = sorted(set(k for c in lc for k in lc[c]))
-    R['lc'] = dict(n={c: len(lc[c]) for c in lc}, n_flag={c: len(flag[c]) for c in flag}, transient=trans,
-                   tau_min=min(R['mc'][k]['_sample']['tau'] for k in allk),
+    st = [LL[f'montecarlo/{k}/{c}'] for c in lc for k in lc[c]]
+    R['lc'] = dict(n={c: len(lc[c]) for c in lc}, n_sw={c: len(sw[c]) for c in sw}, transient=trans,
+                   tau_min=math.floor(1000 * min(R['mc'][k]['_sample']['tau'] for k in allk)) / 1000,
                    mu_max=max(R['mc'][k]['_sample']['mu'] for k in allk),
                    rms_min=min(R['mc'][k][c]['u_rms_res'] for c in lc for k in lc[c]),
-                   rms_max=max(R['mc'][k][c]['u_rms_res'] for c in lc for k in lc[c]))
-    if LL is not None:
-        st = [LL[f'{k}/{c}'] for c in lc for k in lc[c]]
-        R['lc'].update(period=(min(r['period_s'] for r in st), max(r['period_s'] for r in st)),
-                       sat=(min(r['sat_frac'] for r in st), max(r['sat_frac'] for r in st)),
-                       drift=max(abs(r['rms_kN']['290-300'] / r['rms_kN']['20-30'] - 1.0) for r in st),
-                       n_runs=LL['_summary']['runs'])
+                   rms_max=max(R['mc'][k][c]['u_rms_res'] for c in lc for k in lc[c]),
+                   period=(min(r['period_s'] for r in st), max(r['period_s'] for r in st)),
+                   sat=(min(r['sat_frac'] for r in st), max(r['sat_frac'] for r in st)),
+                   drift=max(abs(r['rms_kN']['290-300'] / r['rms_kN']['20-30'] - 1.0) for r in st),
+                   tau_min_by={c: (min(R['mc'][k]['_sample']['tau'] for k in lc[c]) if lc[c] else None)
+                               for c in setup.ALL})
+    # swing oscillations of the low-gain PID sets: rope lengths and amplitudes
+    swl = [(k, c) for c in sw for k in sw[c]]
+    R['sw'] = dict(l_min={c: (min(R['mc'][k]['_sample']['l'] for k in sw[c]) if sw[c] else None) for c in setup.ALL},
+                   amp=(min(LL[f'montecarlo/{k}/{c}']['phi_amp_deg']['290-300'] for k, c in swl) if swl else 0.0,
+                        max(LL[f'montecarlo/{k}/{c}']['phi_amp_deg']['290-300'] for k, c in swl) if swl else 0.0),
+                   period=(min(LL[f'montecarlo/{k}/{c}']['phi_period_s'] for k, c in swl) if swl else 0.0,
+                           max(LL[f'montecarlo/{k}/{c}']['phi_period_s'] for k, c in swl) if swl else 0.0))
+    # samples beyond the linear stability limits (rope length; drive lag with low friction)
+    MGJ = J('linear_margins.json')
+    R['beyond'] = {}
+    for c in ('PID (soft)', 'PID (medium)', 'PID (optimal)'):
+        lim = MGJ[c]['l_unstable_from']
+        ks = [k for k in mc_keys if R['mc'][k]['_sample']['l'] >= lim]
+        R['beyond'][c] = dict(n=len(ks), n_osc=sum(1 for k in ks if cl('montecarlo', k, c) == 'swing_oscillation'))
+    mu_lim = math.ceil(1000 * R['lc']['mu_max'] - 1e-9) / 1000   # the bound stated in the text (N/kN, rounded up)
+    for c in ('PID (hard)', 'LQR', 'MPC', 'MPC-SC'):
+        tc = MGJ['MPC' if c == 'MPC-SC' else c]['tau_crit']
+        ks = [k for k in mc_keys if R['mc'][k]['_sample']['tau'] > tc and R['mc'][k]['_sample']['mu'] <= mu_lim + 1e-12]
+        R['beyond'][c] = dict(n=len(ks), n_lc=sum(1 for k in ks if cl('montecarlo', k, c) == 'limit_cycle'))
+    # sustained oscillations in the nominal and robustness cases
+    R['osc_cases'] = {k: v for k, v in cls.items() if not k.startswith('montecarlo') and
+                      v in ('limit_cycle', 'swing_oscillation')}
+    R['osc_amp'] = {k: LL[k]['phi_amp_deg']['290-300'] for k in R['osc_cases']}
+    R['osc_period'] = {k: LL[k]['phi_period_s'] for k in R['osc_cases']}
     R['mcs'] = mcs
     R['ramp'] = J('metrics_ramp.json')['S2r']
     R['offset'] = J('offset_sweep.json')
@@ -157,6 +186,14 @@ def collect():
     R['S4_coupling'].update(dy_mm=float(max(dy)), dth_deg=float(max(dth)))
     rt = J('rope_tension_check.json')['_summary']
     R['rope_min'], R['rope_min_case'], R['rope_max'] = rt['Tmin_kN'], rt['Tmin_case'], rt['Tmax_kN']
+    # settling time in S1 versus the band half-width (the 2 % result rests on a small overshoot)
+    from sim.metrics import settling_time
+    R['band_sens'] = {}
+    for c in ('PID (optimal)', 'MPC', 'LQR'):
+        d = run('nominal', 'S1', c)
+        R['band_sens'][c] = {f'{1000 * b:.0f}': float(settling_time(d['t'], d['xT'], b))
+                             for b in (0.010, 0.011, 0.012, 0.015, 0.025)}
+    R['po_os_mm'] = float(-1000 * run('nominal', 'S1', 'PID (optimal)')['xT'].min())
     R['phi_max_S1'] = max(R['nom']['S1'][c]['phi_peak'] for c in setup.ALL)
     R['phi_max_S2'] = max(R['nom']['S2'][c]['phi_peak'] for c in setup.ALL)
     # MPC-SC limits under model mismatch (Monte Carlo); admissible initial swing |phi(0)| <= 2 deg
@@ -177,17 +214,25 @@ def collect():
                       phi_med_over=float(np.median(ph[po])) if po.any() else 0.0,
                       phi_p95=float(np.percentile(ph[adm], 95)),
                       tp_med=float(np.median(tp[po])) if po.any() else 0.0,
-                      rho_v_tau=float(spearmanr(smp['tau'], v)[0]),
-                      rho_phi_l=float(spearmanr(smp['l'], ph)[0]),
-                      v_max_lowlag=float(np.max(v[smp['tau'] < 0.01])),
-                      n_lowlag=int(np.sum(smp['tau'] < 0.01)),
+                      rho_v_tau=float(spearmanr(smp['tau'][adm], v[adm])[0]),
+                      rho_phi_l=float(spearmanr(smp['l'][adm], ph[adm])[0]),
+                      v_med_viol=float(np.median(v[vo])) if vo.any() else 0.0,
+                      v_max_lowlag=float(np.max(v[adm & (smp['tau'] < 0.01)])),
+                      n_lowlag=int(np.sum(adm & (smp['tau'] < 0.01))),
                       phi_bound_l4=float(np.degrees(np.arcsin(6.0 * np.sin(np.radians(2.0)) / 4.0))),
                       fallbacks=int(sum(R['mc'][k][c].get('fallbacks', 0) for k in keys for c in ('MPC-SC',))))
+    R['term_mc'] = {c: dict(n_fail=int(sum(1 for k in keys if R['mc'][k][c].get('term_ok_frac', 1.0) < 1.0)),
+                            min_frac=float(min(R['mc'][k][c].get('term_ok_frac', 1.0) for k in keys)))
+                    for c in ('MPC', 'MPC-SC')}
+    R['sc_slack_nom'] = float(max(R['nom'][k]['MPC-SC'].get('slack_max', 0.0) for k in ('S1', 'S2', 'S4', 'S5')))
+    R['sc_slack_S3'] = float(R['nom']['S3']['MPC-SC'].get('slack_max', 0.0))
     R['sc_fallbacks_all'] = int(sum(R[g][k]['MPC-SC'].get('fallbacks', 0) for g in ('nom', 'rob') for k in R[g])
                                 + R['sc_mc']['fallbacks'])
     # optional results of the additional checks
     for name, key in (('rope_angles.json', 'rope_angles'), ('limit_cycles.json', 'lc_long'),
-                      ('trolley_integral.json', 'tri'), ('swing_integrator_bound.json', 'swb')):
+                      ('trolley_integral.json', 'tri'), ('swing_integrator_bound.json', 'swb'),
+                      ('linear_margins.json', 'margins'), ('lq_specs.json', 'lqs'),
+                      ('equivalence_all.json', 'eqa'), ('friction_vs.json', 'friction_vs')):
         if os.path.exists(os.path.join(RES, name)):
             R[key] = J(name)
     if 'rope_angles' in R:
@@ -206,8 +251,8 @@ def collect():
     if m:
         R['qp_real'] = dict(zip(('n', 'nvar', 'ncon', 'first', 'restarts', 'after'), map(int, m.groups())))
         k2 = re.search(r'MPC-SC KKT residuals \(relative\): max primal violation = ([0-9.e+-]+), '
-                       r'max stationarity = ([0-9.e+-]+)', qv)
-        R['qp_real'].update(viol=float(k2.group(1)), stat=float(k2.group(2)))
+                       r'max stationarity = ([0-9.e+-]+), max complementarity = ([0-9.e+-]+)', qv)
+        R['qp_real'].update(viol=float(k2.group(1)), stat=float(k2.group(2)), comp=float(k2.group(3)))
         k3 = re.search(r'Random problems, IPM KKT residuals \(relative\): max primal violation = ([0-9.e+-]+), '
                        r'max stationarity = ([0-9.e+-]+)', qv)
         R['qp_rand_kkt'] = max(float(k3.group(1)), float(k3.group(2)))

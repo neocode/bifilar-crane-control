@@ -15,6 +15,7 @@ RES = os.path.join(os.path.dirname(__file__), '..', 'results')
 NAME = 'PID (trolley I)'
 SPEC = TU.SPECS['PID (optimal)']
 SEEDS = [1, 2, 3, 4]
+KIT_SWEEP = [0.01, 0.1, 0.3, 1.0, 2.0]
 KEYS = ['KpT', 'KiT', 'KdT', 'Kpa', 'Kia', 'Kda']
 
 
@@ -23,6 +24,14 @@ def tune(args):
     tu = TU.Tuner(SPEC, swing_integral=False)
     g, r, c = tu.run(seed=seed, x0=x0)
     return seed, g.tolist(), {k: float(v) for k, v in r.items()}, float(c)
+
+
+def tune_fixed(args):
+    """Best design for a fixed trolley integral gain K_iT (the other four gains optimized)."""
+    kit, seed, x0 = args
+    tu = TU.Tuner(SPEC, swing_integral=False, fixed={1: kit})
+    g, r, c = tu.run(seed=seed, x0=x0)
+    return kit, seed, g.tolist(), {k: float(v) for k, v in r.items()}, float(c)
 
 
 def simulate(args):
@@ -45,6 +54,17 @@ if __name__ == '__main__':
     with ProcessPoolExecutor(len(starts)) as ex:
         res = list(ex.map(tune, starts))
     seed, gains, design, cost = min(res, key=lambda r: r[3])
+    # sweep over fixed K_iT: two random seeds and a start from PD with the given K_iT
+    pd = np.array([G['PD']['gains'][k] for k in KEYS])
+    sweep_jobs = [(kit, s_, None) for kit in KIT_SWEEP for s_ in (1, 2)]
+    sweep_jobs += [(kit, 3, np.clip(np.r_[pd[0], kit, pd[2], pd[3], 0.0, pd[5]], lo, hi)) for kit in KIT_SWEEP]
+    with ProcessPoolExecutor(min(20, len(sweep_jobs))) as ex:
+        sw = list(ex.map(tune_fixed, sweep_jobs))
+    sweep = {}
+    for kit in KIT_SWEEP:
+        best = min([r for r in sw if r[0] == kit], key=lambda r: r[4])
+        sweep[str(kit)] = dict(J=best[4], gains=dict(zip(KEYS, best[2])), design=best[3])
+        print(f'K_iT = {kit}: J = {best[4]:.3f}', {k: round(best[3][k], 3) for k in ('OS', 'PHI', 'zeta', 'Fun')})
     print(f'{NAME}: J={cost:.4f} (seed {seed}) gains={np.round(gains, 3)}')
     print('   ', {k: round(v, 4) for k, v in design.items()})
     jobs = [('nominal', k, sc, gains) for k, sc in SC.nominal_set().items()]
@@ -52,7 +72,7 @@ if __name__ == '__main__':
     mc = SC.monte_carlo_set()
     jobs += [('montecarlo', k, sc, gains) for k, sc in mc.items()]
     out = dict(name=NAME, spec=SPEC, gains=dict(zip(KEYS, gains)), design_metrics=design, cost=cost,
-               seed=seed, all_costs=sorted(round(r[3], 6) for r in res), nominal={}, robust={},
+               seed=seed, all_costs=sorted(round(r[3], 6) for r in res), sweep=sweep, nominal={}, robust={},
                montecarlo={})
     with ProcessPoolExecutor(20) as ex:
         for group, key, m in ex.map(simulate, jobs, chunksize=4):
